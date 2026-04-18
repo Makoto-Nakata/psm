@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>PSM 簡易診断 | トライアル版</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Noto Sans JP', sans-serif; background: #f0f5f7; }
+.btn { transition: all .18s ease; cursor: pointer; }
+.btn:hover:not(:disabled) { filter: brightness(1.07); transform: translateY(-1px); box-shadow: 0 4px 18px rgba(55,170,186,.38); }
+.btn:disabled { cursor: not-allowed; }
+.sb { transition: border-color .12s, color .12s, background .12s; cursor: pointer; }
+.sb:hover { border-color: #37AABA !important; color: #37AABA !important; background: #edf9fb !important; }
+
+/* ── 印刷 / PDF出力用スタイル ── */
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  @page { size: A4; margin: 14mm 12mm 14mm 12mm; }
+  .print-break-before { page-break-before: always; break-before: page; }
+  .print-no-break { page-break-inside: avoid; break-inside: avoid; }
+  a { text-decoration: none; color: inherit; }
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+}
+</style>
+</head>
+<body>
+<div style="background:rgba(245,245,247,.92);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);color:#6E6E73;text-align:center;padding:10px 16px;font-size:12px;letter-spacing:-0.01em;font-weight:400;border-bottom:1px solid rgba(0,0,0,.06);position:sticky;top:0;z-index:50">
+  <span style="color:#1D1D1F;font-weight:500">PSM Diagnostic</span>　Trial version ・ 診断結果は保存されません
+</div>
+<div id="root"></div>
+<script>
+const {useState}=React;
+const h=React.createElement;
+const AC='#0071E3',ACD='#0077ED',BG='#F5F5F7',CARD='#FFFFFF';
+const AG1='#1D1D1F',AG2='#424245',AG3='#6E6E73',AG4='#86868B',AG5='#D2D2D7',AG6='#E8E8ED',AG7='#F5F5F7';
+const JC={高:'#34C759',中:'#FF9500',低:'#FF3B30'};
+const JBG={高:'#E8F8EC',中:'#FFF4E5',低:'#FFEBEA'};
+const DOMAINS=[
+  {id:'Career',label:'Career',desc:'自律的キャリア形成'},
+  {id:'Purpose',label:'Purpose',desc:'本質的状況把握'},
+  {id:'Direction',label:'Direction',desc:'ビジョン・方向づけ'},
+  {id:'Anticipation',label:'Anticipation',desc:'先読み・予測'},
+  {id:'Ownership',label:'Ownership',desc:'主体性・当事者意識'},
+  {id:'Execution',label:'Execution',desc:'意思決定を伴う実行力'},
+  {id:'Grit',label:'Grit',desc:'やり切る力'},
+  {id:'Reflection',label:'Reflection',desc:'振り返り・修正'},
+];
+const QS=[
+  ['自分が将来どのような役割を担いたいか、周囲に話したり書き出したりしている','現在の業務から何を学ぶかを具体的に挙げ、成長機会として活用している','自分に不足しているスキルや経験を具体的に挙げ、補う行動を取っている','自身のキャリアの方向性を言語化し、上司や周囲に説明できる','環境変化に応じてキャリア方針を見直し、必要な機会を自ら取りに行っている'],
+  ['自分の担当業務の目的や背景を他者に説明できる状態で取り組んでいる','顧客や関係者の依頼内容を、表面的に受け取るだけでなく意図を確認している','複数の課題がある場面で、優先順位をつけて順序立てて対応している','外部環境の変化（顧客・市場・技術）が自分の業務に与える影響を周囲に説明している','表面的な要望の背景にある本質的な課題を特定し、周囲に共有している'],
+  ['担当業務やプロジェクトの目標を、メンバーに分かりやすく伝えている','目の前のタスクだけでなく、その先にある目的や意味をメンバーに伝えている','チームや関係者に対して、進むべき方向性を自分の言葉で示している','短期的な目標と中長期的なあるべき姿を結びつけて説明できる','状況が不透明な中でも、自分なりの判断で方向を示し、周囲の共感を得ている'],
+  ['自分のタスクの次のステップや期限を踏まえ、事前に段取りを組んでいる','依頼や指示を受ける前に、必要になりそうな準備や情報収集を始めている','現在の進捗や状況から、今後起こりうる問題を洗い出して共有している','リスクや障害を事前に想定し、対策や代替案を準備している','将来の環境変化（顧客・技術・組織）を踏まえた行動を先回りで取っている'],
+  ['自分の担当業務について、指示を待たずに自ら次の行動を起こしている','自分が行った判断や行動の結果に対して、責任を持って対応している','担当範囲に隣接する課題にも、必要に応じて関与している','判断を必要以上に上位者に委ねず、自分で決められることは自ら判断している','役割の境界に落ちた課題でも、自ら解決の起点をつくり、周囲を巻き込んでいる'],
+  ['決められたことや合意事項を、期限内に確実に実行している','必要な情報を集めたうえで、自分なりの判断で次の行動を決めている','判断すべき論点を整理し、優先順位をつけて意思決定している','自ら決めた方針を関係者に明確に伝え、実行を推進している','不確実な状況でも判断を先送りせず、適切なタイミングで意思決定し、結果を追っている'],
+  ['任された業務を途中で投げ出さず、最後まで対応している','想定外の問題が発生しても、自分なりに解決策を探している','困難な状況でも、周囲に助けを求めながら対応を続けている','プレッシャーがかかる場面でも、成果が出るまで粘り強く行動している','周囲が諦めるような状況でも、最後まで責任を持ち続け、完遂に持ち込んでいる'],
+  ['業務の完了後に、うまくいった点・いかなかった点を振り返っている','他者からのフィードバックを素直に受け止め、次の行動に反映している','自身の判断や行動の傾向（強み・弱み）を言語化し、対処に活かしている','状況変化に応じて、計画や方針を柔軟に見直している','過去の判断結果や失敗経験を、次の意思決定や行動の改善に体系的に活かしている'],
+];
+const DIFF=['基本','実践','応用','発展','高度'];
+const TP=[
+  {d1:0,d2:1,t:{HH:'自律戦略家',HL:'自己実現先行型',LH:'環境適応型人材',LL:'組織順応型'}},
+  {d1:0,d2:2,t:{HH:'キャリアビジョナリー',HL:'自律行動家',LH:'翻訳型ビジョナリー',LL:'模索型キャリア'}},
+  {d1:0,d2:6,t:{HH:'キャリアオーナー',HL:'探索型移動人材',LH:'我慢強い受託者',LL:'安定志向型'}},
+  {d1:1,d2:2,t:{HH:'戦略リーダー',HL:'分析屋',LH:'夢想家',LL:'模索型'}},
+  {d1:1,d2:3,t:{HH:'構造的先読み型',HL:'事後分析型',LH:'直感先行型',LL:'即応対処型'}},
+  {d1:2,d2:3,t:{HH:'先導型ビジョナリー',HL:'ビジョン発信型リーダー',LH:'慎重な実務参謀',LL:'安定遂行型マネージャ'}},
+  {d1:4,d2:5,t:{HH:'実行責任者',HL:'高責任感型',LH:'処理型マネージャ',LL:'観察待機型'}},
+  {d1:5,d2:6,t:{HH:'完遂者（ラストマン）',HL:'初動集中型',LH:'粘り先行型',LL:'慎重待機型'}},
+  {d1:2,d2:4,t:{HH:'牽引者',HL:'洞察提言型リーダー',LH:'実務職人',LL:'協調支援型'}},
+  {d1:4,d2:7,t:{HH:'学習駆動リーダー',HL:'強意志型リーダー',LH:'内省型フォロワー',LL:'安定維持型'}},
+  {d1:5,d2:7,t:{HH:'改善実装者',HL:'実行優先型',LH:'深省慎重型',LL:'一貫実行型'}},
+  {d1:0,d2:7,t:{HH:'自律成長者',HL:'挑戦先行型',LH:'内省探索型',LL:'持続安定型'}},
+];
+const WARNS={'夢想家':'ビジョンは語るが現場接続が弱い','分析屋':'正しいが人を動かせない','高責任感型':'判断遅延でボトルネック化しやすい','初動集中型':'難局で失速するリスクがある','強意志型リーダー':'学ばず周囲を疲弊させるリスクがある'};
+const TYPE_GOOD={'自律戦略家':'キャリアビジョンと状況把握力を兼ね備え、自分の立ち位置を常に意識しながら成長機会を戦略的につかめる。周囲への影響力も高い。','キャリアビジョナリー':'長期的な自分の姿を描き、チームへの方向づけも同時に行える。ビジョンと自律的行動が連動した理想的なリーダー像。','キャリアオーナー':'自らのキャリアを主体的に設計しつつ、どんな困難でもやり遂げる粘り強さを持つ。信頼性と自律性を高レベルで両立。','戦略リーダー':'本質を見抜く力と、チームへの方向づけ力を兼備。「何が重要か」を正確に捉えたうえで、組織を正しい方向に導ける。','構造的先読み型':'物事の本質を捉えながら、先を読んで準備を整えられる。問題が顕在化する前に手を打てる、組織の頼れる参謀役。','先導型ビジョナリー':'方向を示しながら、先読みで準備を整える二刀流。不確実な環境でもチームを安心させ、動かし続けられるリーダー。','実行責任者':'主体的に関与しながら、判断と実行を力強く推進できる。責任感と実行力が高次元で融合した、成果に直結するタイプ。','完遂者（ラストマン）':'難しい状況でも決断し、最後まで諦めずにやり切る。周囲が失速しても自分が最後の砦となり、組織の信頼を勝ち取る。','牽引者':'ビジョンを掲げながら、当事者意識を持って率先垂範する。言葉だけでなく行動でチームを引っ張るリーダーシップの体現者。','学習駆動リーダー':'主体性と振り返り力を組み合わせ、自分の行動を常にアップデートし続ける。経験を糧に成長し続ける、自律型リーダーの理想形。','改善実装者':'実行した結果を素直に振り返り、次に活かすサイクルを回せる。PDCAを自然体で回し、継続的に質を高め続けられる。','自律成長者':'キャリアを自ら設計しながら、経験から学ぶ力も高い。主体的に動き、失敗すら成長の糧にする自律型人材の典型。','自己実現先行型':'自分のキャリアへの意欲・行動力が高く、積極的に成長機会を探せる。自律的に動く推進力が強みで、職場への貢献意欲も高い。','自律行動家':'キャリアを自分で切り拓く主体性が強く、目標に向かって確実に動ける。実行力があり、現場での貢献度が高い。','探索型移動人材':'自らのキャリアを積極的に動かし、新しいことへの挑戦を厭わない。変化への適応力が高く、成長への意欲が行動に表れている。','事後分析型':'状況を深く読む分析力があり、起きたことの本質を鋭く言語化できる。その洞察はチームの学習に大きく貢献する。','ビジョン発信型リーダー':'ビジョンを言語化し、メンバーに理想の方向を示す力がある。大きな目標を描き、周囲を鼓舞する発信力を持つ。','高責任感型':'どんな課題も自分事として引き受ける強い当事者意識を持つ。真剣に仕事に向き合い、周囲からの信頼も厚い。','洞察提言型リーダー':'方向性や戦略を語る力に優れ、場の論点整理が得意。課題の本質を捉えた発言でチームの思考を整理できる。','強意志型リーダー':'強い主体性と当事者意識で課題に正面から向き合う。任された仕事への責任感は本物で、組織を引っ張る力がある。','実行優先型':'意思決定と実行のスピードが速く、停滞を嫌い常に前に進む。難局でもひるまず推進できる実行力が際立つ。','挑戦先行型':'キャリアに対して行動的で、新たな挑戦を積極的に取りに行く。成長への貪欲さが行動にあふれ、周囲への刺激にもなる。','環境適応型人材':'状況や環境の変化を読み取る感度が高く、外部要因の影響を的確に把握できる。組織の中で情報の入り口として機能する。','翻訳型ビジョナリー':'チームの方向性を示す力があり、上位のビジョンをわかりやすく翻訳してメンバーに伝えることができる。','我慢強い受託者':'与えられた仕事をとことんやり遂げる粘り強さが際立つ。どんな困難な状況でも諦めず、最後まで責任を持ち続ける。','夢想家':'大きなビジョンを描く力があり、理想の姿を生き生きと語れる。チームに希望や方向性を示すインスピレーション源になり得る。','直感先行型':'直感で先を読む感度が高く、動きが早い。リスクを恐れず素早くアクションを起こせる推進力がある。','慎重な実務参謀':'先を読む力があり、リスクや問題を事前に洗い出す能力に優れる。着実な準備と慎重な判断でプロジェクトを下支えする。','処理型マネージャ':'与えられた業務を正確・迅速に処理する実行力が高い。合意事項を確実にこなし、チームの実務を安定させる役割を担う。','粘り先行型':'どんな困難な場面でも粘り強く取り組む姿勢が強み。やり抜く意志と努力量は、周囲の士気を高める力を持っている。','実務職人':'チームの方向性のもと、自分の役割を確実にやり切る実務の達人。高品質な成果を安定して出し続けることができる。','内省型フォロワー':'自分の行動や判断を丁寧に振り返り、次に活かす学習サイクルが自然と身についている。着実な成長が見込めるタイプ。','深省慎重型':'自分の行動に対して誠実に向き合い、改善点を深く考える姿勢がある。真摯さと誠実さが周囲の信頼につながっている。','内省探索型':'自分の経験を丁寧に振り返る力があり、失敗を糧にして着実に成長できる。謙虚さと学習意欲が長期的な成熟をもたらす。','組織順応型':'組織のルールや指示に従って着実に動くことができる。安定した環境では確実な成果を出す、堅実なチームの一員。','模索型キャリア':'現在の業務に集中して取り組む力はある。目の前のタスクへの対応力を活かし、周囲のサポートを受けながら実績を積める。','安定志向型':'与えられた仕事を確実にこなす姿勢は持っている。周囲の期待に応えることで信頼関係を構築できるポテンシャルがある。','模索型':'柔軟性があり、固定観念にとらわれない。外からの働きかけをきっかけに大きく変われる伸びしろを持っている。','即応対処型':'目の前の状況への対応力はある。具体的な課題に向き合う経験を積むことで、状況把握と先読みの力を伸ばせる。','安定遂行型マネージャ':'指示やルールに従って確実に動く安定性がある。チームのサポート役として現場を下支えする堅実さを持っている。','観察待機型':'俯瞰的な視点で状況を観察する力がある。一歩踏み込む行動力が加わると、その観察眼を大きく活かせる。','慎重待機型':'潜在的なポテンシャルはある。適切なサポートと環境があれば、行動力と継続力を引き出せる可能性を秘めている。','協調支援型':'安定した環境で着実に動く力はある。方向性と機会が与えられれば、確実に実行する能力を発揮できる。','安定維持型':'現状維持への安心感が強く、慎重さはある。信頼できる環境・関係性が整えば、主体的な変化を起こせる可能性がある。','一貫実行型':'決められたやり方を守る安定性がある。一定のルール・方針のもとで着実な仕事をする力を持っている。','持続安定型':'継続して業務に取り組む持続力はある。外からの刺激やフィードバックをきっかけに、成長サイクルに入れる可能性がある。'};
+const TYPE_BAD={'自律戦略家':'完成度が高い分、他者への期待値が上がりすぎる場合がある。「なぜわからないのか」という無意識の驕りがチームの心理的安全性を下げるリスクに注意。','キャリアビジョナリー':'ビジョンと現実のギャップを自分では感じにくい。メンバーが置いてきぼりになっていないか、現場の声を定期的に確認する必要がある。','キャリアオーナー':'粘り強さが強みの反面、撤退判断が遅くなりがち。方向性の誤りに気づいても修正しにくい傾向があり、柔軟な見直しが課題になることがある。','戦略リーダー':'高い洞察と方向づけの力があるゆえ、現場の細部や感情面が抜け落ちることがある。実行レベルのフォローと共感力の強化が成長の鍵。','構造的先読み型':'先を読みすぎてリスクを過大評価し、動き出しが遅くなることがある。「準備が整ってから」という慎重さが機会損失につながることも。','先導型ビジョナリー':'自分が先を走りすぎてチームが追いつけないことがある。引っ張るだけでなく、ペースを合わせて組織全体を動かす視点が求められる。','実行責任者':'実行力と責任感が強いゆえ、すべてを自分で抱え込みやすい。権限委譲が苦手で、チームの成長機会を奪ってしまうリスクがある。','完遂者（ラストマン）':'最後までやり切る力は強いが、過程での撤退・変更判断が弱い。完遂への固執が最適解の選択を妨げることがある。','牽引者':'引っ張る力が強い分、周囲の意見を十分に聞かずに突き進む場合がある。多様な意見を束ねる包括力をさらに磨く必要がある。','学習駆動リーダー':'学習・改善のサイクルが強い反面、完璧主義に陥りやすい。「完璧な振り返り」より「素早い実験と改善」のバランスが課題になることも。','改善実装者':'振り返りと実行の両輪は優秀だが、大きな方向転換や革新的なチャレンジには慎重になりがち。現状改善にとどまらない飛躍も必要な場面がある。','自律成長者':'自己成長への意識が高いあまり、自分の成長優先で組織への貢献が後回しになる場合がある。チームの成熟にも同等の関心を向けることが次の課題。','自己実現先行型':'自分のキャリアへの関心が高い一方、チームや組織全体の課題への感度が低い。「自分の成長」と「周囲への貢献」のバランスが課題。','自律行動家':'行動力はあるが、目の前のゴールへの集中がビジョンの欠如につながりやすい。「何のために動くか」という意味づけを周囲に伝えることが弱い。','探索型移動人材':'挑戦意欲は旺盛だが、やり切る前に次へ移ってしまう傾向がある。継続的な成果を積み上げるより、探索が目的化しやすいリスクがある。','事後分析型':'起きた後の分析は鋭いが、事前予測と準備に弱い。「あのとき〜すべきだった」と振り返ることが多く、リアルタイムの対応力に課題がある。','ビジョン発信型リーダー':'ビジョンを語るだけで行動が伴わない場面が多い。「言葉で鼓舞するが自分は動かない」という状態に陥り、メンバーの信頼を失いやすい。','高責任感型':'自分で抱えすぎて意思決定が遅延するボトルネックになりがち。「引き受ける責任感」と「判断して動く実行力」の間に大きなギャップがある。','洞察提言型リーダー':'語るが動かない、というギャップが周囲の不満につながりやすい。課題を指摘するだけで解決策の実装に関与しない、評論に終始するリスクがある。','強意志型リーダー':'強い主体性の反面、失敗・フィードバックを自分の糧にする力が弱い。過去の成功体験に縛られ、成長が止まりやすい。','実行優先型':'実行スピードは速いが、振り返りがないため同じ失敗を繰り返す。「やって終わり」のサイクルが続き、経験が知恵に変換されないリスクがある。','挑戦先行型':'新しいことへの意欲は高いが、過去の経験から体系的に学ぶ力が弱い。挑戦を重ねても成長のパターンが定着しにくい傾向がある。','環境適応型人材':'外部環境は読めても、自分のキャリアや成長に対して主体的に動けない。状況理解が自分の行動に結びつかず、受け身の姿勢が染みついている。','翻訳型ビジョナリー':'他者のビジョンを翻訳する力はあるが、自分のキャリアビジョンを語れない。方向性の「借り物感」が本人の主体性の欠如として周囲に見透かされる。','我慢強い受託者':'粘り強さはあるが、受け身の仕事しかしない。自らキャリアや成長機会を取りに行く姿勢が乏しく、成長が環境依存になりがち。','夢想家':'ビジョンは描けるが現場の実態・本質課題との接続が弱い。「理想は語れるが何が本当の問題かを捉えられない」という空虚なリーダーシップに陥りやすい。','直感先行型':'直感で動くが根拠が薄い。状況の本質を理解しないまま先回りするため、方向性がずれた準備や空振りのアクションになることが多い。','慎重な実務参謀':'リスク管理は得意だが、全体のビジョンや方向を示す力が弱い。「安全に進める」ことに集中するあまり、チームの推進力を下げてしまうことがある。','処理型マネージャ':'実行力はあるが、主体性・当事者意識に欠ける。「言われたことはやる」が「言われていないことはやらない」傾向が強く、自発的な課題解決が期待しにくい。','粘り先行型':'頑張り続けるが、意思決定力が伴わないため成果に結びつきにくい。努力の量に対して成果が出ず、本人も周囲も消耗するリスクがある。','実務職人':'高い専門性で実務をこなすが、チームへの方向づけや巻き込みが苦手。「個で完結する優秀さ」が組織的なリーダーシップの発揮を妨げる。','内省型フォロワー':'振り返る力はあるが、主体的に動く力が弱い。「どうすべきか考えている」けれど「実際には動いていない」状態に陥りやすい。','深省慎重型':'振り返りすぎて前に進めなくなるリスクがある。失敗への自責が過剰になり、行動の踏み出しに時間がかかる内向きのループに入りやすい。','内省探索型':'自己分析力はあるが、キャリアを能動的に動かす力が乏しい。「わかっているけど動けない」という状態が長期化しやすく、変化に時間がかかる。','組織順応型':'キャリアも状況把握も他者・組織任せで、自律的に考え動く力が育っていない。変化の多い環境では適応が遅れ、常に誰かの指示待ちになってしまう。','模索型キャリア':'自分のキャリアも、チームの方向づけも、どちらも弱い。「どこへ向かうのか」が見えない状態で日々の業務をこなすだけになりがち。','安定志向型':'キャリアもやり切る力も育っておらず、現状維持に甘んじやすい。成長の起点が外部からの強制に限られ、自発的な変化が難しい状態。','模索型':'現状を把握する力も進む方向を描く力も弱く、日々の業務に流されやすい。「なんとなく過ごしている」状態から抜け出す意識の転換が急務。','即応対処型':'状況の本質も見えず、先も読めないため、常にその場しのぎの対応に追われる。問題が常に後手になり、組織の中でも信頼を築きにくい。','安定遂行型マネージャ':'方向を示す力も先読み力もなく、受動的な管理にとどまる。チームの推進力が生まれず、マネージャとしての役割を十分に果たせていない状態。','観察待機型':'主体性も実行力も弱く、課題を前にして動けない。チームの中で「いてもいなくても同じ」と見られるリスクがあり、存在感が薄れていく。','慎重待機型':'決断も行動も継続もできておらず、成果を出せる状態にない。育成・環境整備など外部からの強力な介入なしには変化が難しい状況にある。','協調支援型':'ビジョンも主体性もなく、完全に指示待ちの状態。環境が変わっても自分から対応策を考えることができず、変化への適応が常に遅れる。','安定維持型':'主体的な行動も学習も乏しく、同じ場所に留まり続ける。フィードバックを受け取っても行動変容につながらず、成長の機会を活かせない。','一貫実行型':'実行はするが振り返りがなく、方法の改善が起きない。同じやり方を繰り返すだけで、変化への対応力が育たないまま硬直していく。','持続安定型':'キャリアへの意欲も振り返る力も乏しく、惰性で業務を続けている。成長の問いを自分に向けることなく、現状維持が常態化している。'};
+// ─── 相性マトリクス（◎補完のみ抽出） ───────────
+const COMPAT={
+  // P1 Career×Purpose
+  '自律戦略家':[{t:'自己実現先行型',r:'自律戦略家がPurpose観点で環境を構造化し、自己実現先行型がCareer観点で行動に落とす。提案・新規事業企画に最適な補完ペア。'},{t:'環境適応型人材',r:'自律戦略家のCareer自律性と環境理解型のPurpose本質把握力で、上流の要件定義・顧客課題構造化に強い。'}],
+  '自己実現先行型':[{t:'自律戦略家',r:'自己実現先行型のCareer機動力が自律戦略家の構想を加速する。自律戦略家のPurpose力から「やりたいこと」の意味づけを学べる。'}],
+  '環境適応型人材':[{t:'自律戦略家',r:'環境理解型のPurpose力が自律戦略家の構想精度を高める。自律戦略家のCareer自律性からキャリア主体性を学べる最高の関係。'}],
+  // P2 Career×Direction
+  'キャリアビジョナリー':[{t:'自律行動家',r:'ビジョナリーが方向を示し、行動家が実行する。チーム運営や案件推進で互いの強みが噛み合う最適ペア。'},{t:'翻訳型ビジョナリー',r:'Direction高同士で方向性を共有しやすい。ビジョナリーの自律性が翻訳型ビジョナリーの自走力向上を促す。'}],
+  '自律行動家':[{t:'キャリアビジョナリー',r:'行動家の機動力がビジョナリーの構想を加速する。ビジョナリーからDirection力を自然に学べる関係。'}],
+  '翻訳型ビジョナリー':[{t:'キャリアビジョナリー',r:'翻訳型ビジョナリーのDirection力がビジョナリーの方向づけを補強する。Career自律性を学べる最高の関係。'}],
+  // P3 Career×Grit
+  'キャリアオーナー':[{t:'探索型移動人材',r:'オーナーの粘り強さが探索型の飽きやすさを補い、探索型の機動力がオーナーの視野を広げる。新規領域開拓に最適。'},{t:'我慢強い受託者',r:'オーナーの自律性と受託者の粘り強さで堅実な成果を出せる。安定運用や長期案件で力を発揮するペア。'}],
+  '探索型移動人材':[{t:'キャリアオーナー',r:'探索型の機動力がオーナーに新視点を与える。オーナーのGrit力から持続力を自然に学べる。'}],
+  '我慢強い受託者':[{t:'キャリアオーナー',r:'受託者のGrit力がオーナーの構想をしっかり支える。オーナーのCareer自律性から自走する姿勢を学べる。'}],
+  // P4 Purpose×Direction
+  '戦略リーダー':[{t:'分析屋',r:'戦略リーダーが全体方向を示し、分析屋が精緻な分析で裏づける。提案・要件定義・経営報告で最強のペア。'}],
+  '分析屋':[{t:'戦略リーダー',r:'分析屋のPurpose力が戦略リーダーの判断精度を高める。Direction力を学べる最高の補完関係。'}],
+  // P5 Purpose×Anticipation
+  '構造的先読み型':[{t:'事後分析型',r:'構造的先読み型が未来と現在を接続し、後講釈型が事後分析の精度を上げる。現在・過去・未来をつなぐ最強コンビ。'}],
+  '事後分析型':[{t:'構造的先読み型',r:'後講釈型のPurpose力が構造的先読み型の分析基盤を強化する。Anticipation力を学べる補完関係。'}],
+  // P6 Direction×Anticipation
+  '先導型ビジョナリー':[{t:'慎重な実務参謀',r:'先導型が方向を示し、参謀がリスクを洗い出す。最も安全で効果的なペア。案件計画・リスク管理に最適。'}],
+  '慎重な実務参謀':[{t:'先導型ビジョナリー',r:'参謀のAnticipation力が先導型の判断を安全にする。Direction力を学べる最高の補完関係。'}],
+  // P7 Ownership×Execution
+  '実行責任者':[{t:'高責任感型',r:'実行責任者が判断と実行を推進し、高責任感型の「決められない」を補う。難局の意思決定で最大の力を発揮するペア。'}],
+  '高責任感型':[{t:'実行責任者',r:'高責任感型のOwnership力が実行責任者の担当領域を広げる。Execution力を学べる補完関係。'}],
+  // P8 Execution×Grit
+  '完遂者（ラストマン）':[{t:'粘り先行型',r:'完遂者の判断力と粘り先行型の粘り強さで、方向を正しく定めて最後までやり切れる。長期案件に最適なペア。'}],
+  '粘り先行型':[{t:'完遂者（ラストマン）',r:'粘り先行型のGrit力が完遂者を力強く支える。Execution力を学べる最高の補完関係。'}],
+  // P9 Direction×Ownership
+  '牽引者':[{t:'実務職人',r:'牽引者が方向を示し、職人が確実に実行する。案件推進・チーム運営に最適な補完ペア。'}],
+  '実務職人':[{t:'牽引者',r:'職人のOwnership力が牽引者の構想を確実に実行する。Direction力を学べる最高の関係。'}],
+  // P10 Ownership×Reflection
+  '学習駆動リーダー':[{t:'内省型フォロワー',r:'学習駆動リーダーの主体性と内省型の振り返り力で、行動と学習のサイクルが高速回転する。改善活動に最適なペア。'}],
+  '内省型フォロワー':[{t:'学習駆動リーダー',r:'内省型のReflection力が学習駆動リーダーの学びを深化させる。Ownership力を学べる補完関係。'}],
+  // P11 Execution×Reflection
+  '改善実装者':[{t:'深省慎重型',r:'改善実装者の実行力と深省慎重型の振り返り力で、精度の高い改善サイクルが生まれる。品質改善に最適なペア。'}],
+  '深省慎重型':[{t:'改善実装者',r:'深省慎重型のReflection力が改善実装者の学びを深化させる。Execution力を学べる最高の補完関係。'}],
+  // P12 Career×Reflection
+  '自律成長者':[{t:'挑戦先行型',r:'自律成長者のReflection力が挑戦先行型の学びを蓄積させる。Career高同士で行動力も共有できる相乗効果のあるペア。'},{t:'内省探索型',r:'自律成長者のCareer自律性と内省探索型の振り返り力で、着実な成長が見込める。育成効果最大化に向く。'}],
+  '挑戦先行型':[{t:'自律成長者',r:'挑戦先行型のCareer機動力が自律成長者に新視点を与える。Reflection力を学べる補完関係。'}],
+  '内省探索型':[{t:'自律成長者',r:'内省探索型のReflection力が自律成長者の学びを深化させる。Career力を学べる最高の関係。'}],
+};
+
+function calcD(ans,i){const b=i*5,qs=ans.slice(b,b+5);return{total:qs.reduce((s,v)=>s+v,0),q45:qs[3]+qs[4]};}
+function judge({total,q45}){if(total>=17&&q45>=6)return'高';if(total<=13||q45<=3)return'低';return'中';}
+function bin(j){return j==='高'?'H':j==='中'?'M':'L';}
+function binT(j){return j==='高'?'H':'L';}  // タイプ診断用：中→低とみなす
+function rankTP(ds,js){return TP.map(p=>{const j1=js[p.d1],j2=js[p.d2],k=binT(j1)+binT(j2);return{...p,j1,j2,k,name:p.t[k],score:ds[p.d1].total+ds[p.d2].total};}).sort((a,b)=>b.score-a.score);}
+// ─── PSM 12タイプ定義 ────────────────────────────
+const TYPE12=[
+  {id:1,name:'構想家',en:'Visionary',el:'mind',ori:'strategy',
+   one:'ビジョンと直感で未来を描き、組織の方向性を示す人',
+   strong:['Career','Direction','Anticipation'],weak:['Execution','Grit'],
+   grow:'実行計画への落とし込み力（Execution）の強化。構想を具体的なタスクに分解し、自ら最初の一手を打つ習慣をつける。',
+   trap:'ビジョンの語りすぎ、実行なき構想の量産。「次のビジョン」より「今の構想の完遂」に集中する。'},
+  {id:2,name:'信念家',en:'Believer',el:'mind',ori:'execution',
+   one:'「これをやるべきだ」という強い意志で周囲を動かす人',
+   strong:['Ownership','Execution'],weak:['Anticipation','Reflection'],
+   grow:'先読み力（Anticipation）と振り返り習慣（Reflection）の強化。週次で「来月の問題の芽」と「今週の学び」を書き出す。',
+   trap:'信念の暴走、周囲の意見を聞かない独善。「正しいかどうか」より「周囲が納得しているか」を定期確認する。'},
+  {id:3,name:'探究者',en:'Explorer',el:'mind',ori:'reflection',
+   one:'「なぜ？」を問い続け、本質を追求する思索の人',
+   strong:['Purpose','Reflection'],weak:['Execution','Grit','Direction'],
+   grow:'方向設定力（Direction）と実行習慣（Execution）の強化。「30分考えたら動く」タイムボックスで行動を先送りしない。',
+   trap:'分析麻痺、内省の無限ループ、行動の先送り。内省の結果を必ず1つの行動に変換するルールを設ける。'},
+  {id:4,name:'戦略参謀',en:'Strategist',el:'skill',ori:'strategy',
+   one:'正しい道筋を描く力は組織随一。参謀として力を発揮する人',
+   strong:['Career','Direction','Anticipation'],weak:['Purpose','Ownership'],
+   grow:'当事者意識（Ownership）と内発的動機（Purpose）の強化。「分析者」から「当事者」へ、自ら課題を引き受ける場面を増やす。',
+   trap:'「正しい分析」への逃避、参謀ポジションへの固定化。分析後は必ず「自分がやること」を1つ決める習慣を持つ。'},
+  {id:5,name:'実務推進者',en:'Executor',el:'skill',ori:'execution',
+   one:'実行の技術を持ち、確実に物事を前に進める人',
+   strong:['Ownership','Execution','Grit'],weak:['Purpose','Reflection'],
+   grow:'意味の問い直し（Purpose）と振り返り習慣（Reflection）の強化。「何のためにやるか」をタスク開始前に言語化する。',
+   trap:'作業者化、目的なき効率化。「効率よくやること」より「意味のあることをやること」を問い直す機会を定例化する。'},
+  {id:6,name:'分析者',en:'Analyst',el:'skill',ori:'reflection',
+   one:'データと論理で本質を見抜く、静かな知性の人',
+   strong:['Purpose','Reflection'],weak:['Execution','Grit','Ownership'],
+   grow:'行動習慣（Execution, Ownership）の強化。分析結果を毎回「次の行動」に変換するルールを設け、傍観者化を防ぐ。',
+   trap:'分析の完璧主義、行動の先送り。「70点の分析で動く」を意識し、完璧を待たずに実行に移す練習をする。'},
+  {id:7,name:'先駆者',en:'Pioneer',el:'habit',ori:'strategy',
+   one:'誰よりも先に動き、行動で道を切り拓く人',
+   strong:['Career','Direction','Anticipation'],weak:['Purpose','Reflection'],
+   grow:'行動に意味を与える力（Purpose）の習得。「なぜ先に動くのか」を言語化し、行動の根拠を周囲に伝える習慣をつける。',
+   trap:'目的なき先走り、行動の空回り。行動の前に「この行動の目的は何か」を10秒考える習慣を持つ。'},
+  {id:8,name:'継続遂行者',en:'Sustainer',el:'habit',ori:'execution',
+   one:'決めたことを黙々とやり切る、組織の屋台骨となる人',
+   strong:['Ownership','Execution','Grit'],weak:['Career','Direction','Anticipation'],
+   grow:'戦略的視点（Direction, Anticipation）の強化。月次で「今の進め方の方向性は正しいか」を上位者と確認する機会を設ける。',
+   trap:'方向を間違えたまま走り続ける、戦略なき努力。「粘る方向が正しいか」の検証を定期的に外部視点で行う。'},
+  {id:9,name:'省察家',en:'Reflector',el:'habit',ori:'reflection',
+   one:'日々の振り返りを習慣とし、静かに成長し続ける人',
+   strong:['Purpose','Reflection'],weak:['Execution','Grit','Direction'],
+   grow:'実行技術（Execution）と方向設定力（Direction）の強化。振り返りで得た気づきを「今週実行する1つのこと」に必ず変換する。',
+   trap:'内省に閉じこもる、行動不足。「考えたら動く」サイクルを意識し、振り返りが自己完結しないようにする。'},
+  {id:10,name:'統率者',en:'Commander',el:'balanced',ori:'strategy',
+   one:'バランスの取れた力で組織を導くリーダータイプ',
+   strong:['Career','Direction','Anticipation'],weak:[],
+   grow:'いずれかの要素を意図的に伸ばし、核となる強みを作る。「70点オールラウンダー」から「ひとつ突出したリーダー」への進化を目指す。',
+   trap:'器用貧乏、リーダーシップの型が定まらない。「自分のリーダースタイル」を言語化し、周囲に発信する機会を持つ。'},
+  {id:11,name:'万能実行者',en:'Allrounder',el:'balanced',ori:'execution',
+   one:'あらゆる場面で安定した実行力を発揮するオールラウンダー',
+   strong:['Ownership','Execution','Grit'],weak:[],
+   grow:'自分ならではの専門領域を確立する。「自分が最も貢献できる場面」を特定し、そこへの投資を意識的に増やす。',
+   trap:'便利屋化、自己の軸の不在。「何でもやる」から「これだけは誰にも負けない」という領域を1つ定める。'},
+  {id:12,name:'自律成熟者',en:'Integrator',el:'balanced',ori:'reflection',
+   one:'自己理解が深く、静かに周囲を支える成熟した存在',
+   strong:['Purpose','Reflection'],weak:[],
+   grow:'実行志向の強化。成熟を行動に変える。「わかっているがやらない」から「わかったからやる」へのシフトを意識する。',
+   trap:'現状維持、変化回避、影響力の過小行使。「変化を起こす勇気」を持ち、自分の洞察を行動に変換する機会を増やす。'},
+];
+
+// ─── 12タイプ相性マトリクス [補完性C, 共鳴性R] ──
+const CM12={
+  '1_2':[1,2],'1_3':[1,2],'1_4':[2,2],'1_5':[3,0],'1_6':[2,0],'1_7':[2,1],'1_8':[3,0],'1_9':[2,0],'1_10':[1,2],'1_11':[2,1],'1_12':[2,1],
+  '2_3':[1,2],'2_4':[2,0],'2_5':[1,2],'2_6':[2,0],'2_7':[3,0],'2_8':[1,2],'2_9':[2,0],'2_10':[2,1],'2_11':[1,2],'2_12':[2,1],
+  '3_4':[2,0],'3_5':[2,0],'3_6':[1,2],'3_7':[2,0],'3_8':[2,0],'3_9':[1,2],'3_10':[2,1],'3_11':[2,1],'3_12':[1,2],
+  '4_5':[1,2],'4_6':[1,2],'4_7':[1,2],'4_8':[3,0],'4_9':[2,0],'4_10':[1,2],'4_11':[2,1],'4_12':[2,1],
+  '5_6':[1,2],'5_7':[2,0],'5_8':[1,2],'5_9':[2,0],'5_10':[2,1],'5_11':[1,2],'5_12':[2,1],
+  '6_7':[2,0],'6_8':[2,0],'6_9':[1,2],'6_10':[2,1],'6_11':[2,1],'6_12':[1,2],
+  '7_8':[1,2],'7_9':[1,2],'7_10':[1,2],'7_11':[2,1],'7_12':[2,1],
+  '8_9':[1,2],'8_10':[2,1],'8_11':[1,2],'8_12':[2,1],
+  '9_10':[2,1],'9_11':[2,1],'9_12':[1,2],
+  '10_11':[1,2],'10_12':[1,2],
+  '11_12':[1,2],
+};
+const EL_LBL={mind:'Mind優位',skill:'Skill優位',habit:'Habit優位',balanced:'均衡型'};
+const ORI_LBL={strategy:'戦略志向',execution:'実行志向',reflection:'内省志向'};
+const EL_COL={mind:'#6c5ce7',skill:'#0984e3',habit:'#00b894',balanced:'#e17055'};
+const ORI_COL={strategy:'#2e9e5b',execution:'#c8873a',reflection:'#d14040'};
+const COMM_GRP=[[1,4,10],[5,8,11],[3,6,9,12],[2,7]];
+const COMM_LBL=['抽象・高速型','具体・着実型','深掘り・内省型','推進・巻き込み型'];
+function getCommGroup(id){return COMM_LBL[COMM_GRP.findIndex(g=>g.includes(id))];}
+
+// ─── 12タイプ判定 ─────────────────────────────────
+function calcType12(answers,ds){
+  // Q1+Q2=Habit(基本/実践), Q3=Skill(応用), Q4+Q5=Mind(発展/高度)
+  let mS=0,sS=0,hS=0;
+  for(let i=0;i<8;i++){const b=i*5;hS+=(answers[b]+answers[b+1])/2;sS+=answers[b+2];mS+=(answers[b+3]+answers[b+4])/2;}
+  const mA=mS/8,sA=sS/8,hA=hS/8;
+  const mx=Math.max(mA,sA,hA),mn=Math.min(mA,sA,hA);
+  let el;
+  if(mx-mn<=0.5)el='balanced';
+  else if(mA===mx)el='mind';
+  else if(sA===mx)el='skill';
+  else el='habit';
+  // Strategy=Career(0)+Direction(2)+Anticipation(3), Execution=Ownership(4)+Execution(5)+Grit(6), Reflection=Purpose(1)+Reflection(7)
+  const str=(ds[0].total+ds[2].total+ds[3].total)/3;
+  const exe=(ds[4].total+ds[5].total+ds[6].total)/3;
+  const ref=(ds[1].total+ds[7].total)/2;
+  let ori;
+  if(str>=exe&&str>=ref)ori='strategy';
+  else if(exe>=ref)ori='execution';
+  else ori='reflection';
+  return{el,ori,mA,sA,hA,str,exe,ref};
+}
+function getType12(el,ori){return TYPE12.find(t=>t.el===el&&t.ori===ori)||TYPE12[0];}
+
+// ─── 相性スコア取得 ───────────────────────────────
+function getCompat12(idA,idB){
+  if(idA===idB)return[0,0];
+  const s=Math.min(idA,idB),l=Math.max(idA,idB);
+  return CM12[s+'_'+l]||[0,0];
+}
+function compatReason(myT,partT,C,R){
+  const parts=[];
+  if(C===3)parts.push('互いの強みが相手の課題領域を完全にカバーし合う最強の補完関係。チームとして全方位に力を発揮できる。');
+  else if(C===2){
+    if(myT.ori!==partT.ori)parts.push(`あなたの${ORI_LBL[myT.ori]}と相手の${ORI_LBL[partT.ori]}が補完し合い、自然な役割分担が生まれる。`);
+    if(myT.el!==partT.el)parts.push(`あなたの${EL_LBL[myT.el]}と相手の${EL_LBL[partT.el]}の違いが、異なる視点・強みを提供し合う。`);
+    if(C===2&&myT.ori===partT.ori&&myT.el===partT.el)parts.push('相手の強みドメインがあなたの課題領域をカバーし、協業で高い成果が期待できる。');
+  }
+  else if(C===1)parts.push('一部の領域で補完関係がある。');
+  if(R===2){
+    if(myT.ori===partT.ori)parts.push(`同じ${ORI_LBL[myT.ori]}で目標・価値観が通じやすく、コミュニケーションがスムーズ。`);
+    else if(getCommGroup(myT.id)===getCommGroup(partT.id))parts.push(`同じ${getCommGroup(myT.id)}で思考スタイルが近く、自然な連携が取れる。`);
+    else parts.push('思考スタイルが近く、自然な連携が取れる。');
+  }
+  else if(R===1)parts.push('一定の共鳴性があり、コミュニケーションが比較的スムーズ。');
+  return parts.join(' ')||'相性スコアに基づく組み合わせです。';
+}
+function RadarChart({data}){
+  const S=300,cx=S/2,cy=S/2,R=92,N=data.length,LV=5;
+  const ang=i=>(2*Math.PI*i/N)-Math.PI/2;
+  const pt=(i,r)=>[cx+r*Math.cos(ang(i)),cy+r*Math.sin(ang(i))];
+  const grids=Array.from({length:LV},(_,l)=>Array.from({length:N},(_,i)=>pt(i,R*(l+1)/LV).join(',')).join(' '));
+  const poly=data.map((d,i)=>pt(i,R*Math.max(0,d.v)/25).join(',')).join(' ');
+  return h('div',{style:{width:'100%',maxWidth:300,margin:'0 auto'}},h('svg',{viewBox:`0 0 ${S} ${S}`,width:'100%'},
+    grids.map((pts,l)=>h('polygon',{key:'g'+l,points:pts,fill:'none',stroke:AG6,strokeWidth:1})),
+    Array.from({length:N},(_,i)=>{const[x,y]=pt(i,R);return h('line',{key:'a'+i,x1:cx,y1:cy,x2:x,y2:y,stroke:AG6,strokeWidth:1});}),
+    h('polygon',{points:poly,fill:AC,fillOpacity:.18,stroke:AC,strokeWidth:2,strokeLinejoin:'round'}),
+    data.map((d,i)=>{const[px,py]=pt(i,R*Math.max(0,d.v)/25);return h('circle',{key:'d'+i,cx:px,cy:py,r:3.5,fill:AC});}),
+    data.map((d,i)=>{const[lx,ly]=pt(i,R*1.26);const cos=Math.cos(ang(i));return h('text',{key:'l'+i,x:lx,y:ly,textAnchor:cos>0.15?'start':cos<-0.15?'end':'middle',dominantBaseline:'middle',fontSize:12,fill:AG3,fontFamily:"-apple-system,BlinkMacSystemFont,'Hiragino Sans','Hiragino Kaku Gothic ProN',sans-serif",letterSpacing:'-0.01em'},d.label);})));
+}
+function Card({title,children,style,className}){return h('div',{className:className||'',style:{background:CARD,borderRadius:18,padding:28,marginBottom:16,border:'1px solid '+AG6,boxShadow:'0 1px 3px rgba(0,0,0,.04)',...style}},title&&h('h3',{style:{margin:'0 0 20px',fontSize:19,fontWeight:600,color:AG1,letterSpacing:'-0.02em'}},title),children);}
+
+function StartScreen({onStart}){
+  return h('div',{style:{minHeight:'100vh',background:BG,display:'flex',alignItems:'center',justifyContent:'center',padding:24}},
+    h('div',{style:{maxWidth:580,width:'100%',borderRadius:22,overflow:'hidden',background:CARD,border:'1px solid '+AG6,boxShadow:'0 4px 24px rgba(0,0,0,.06)'}},
+      h('div',{style:{padding:'64px 40px 48px',textAlign:'center',background:CARD}},
+        h('div',{style:{fontSize:12,letterSpacing:'0.04em',color:AG3,marginBottom:14,fontWeight:500,textTransform:'uppercase'}},'Proactive Self-Management'),
+        h('h1',{style:{margin:'0 0 14px',fontSize:44,fontWeight:600,color:AG1,letterSpacing:'-0.03em',lineHeight:1.08}},'PSM 簡易診断'),
+        h('p',{style:{margin:0,color:AG3,fontSize:17,lineHeight:1.47,letterSpacing:'-0.01em',fontWeight:400}},'マネージャ・リーダーのための',h('br'),'セルフアセスメント')),
+      h('div',{style:{background:CARD,padding:'0 40px 40px',borderTop:'1px solid '+AG6}},
+        h('p',{style:{color:AG2,fontSize:15,lineHeight:1.6,margin:'32px 0 28px',letterSpacing:'-0.01em'}},'あなたのマネジメント行動特性を8つの領域にわたって診断します。日頃の実際の行動に最も近い番号を選択してください。'),
+        h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,marginBottom:24}},
+          [['40問','8領域 × 5問'],['5段階','評価形式'],['10〜15分','所要時間']].map(([v,l],i)=>
+            h('div',{key:i,style:{background:AG7,borderRadius:14,padding:'18px 12px',textAlign:'center'}},
+              h('div',{style:{fontSize:22,fontWeight:600,color:AG1,marginBottom:4,letterSpacing:'-0.02em'}},v),h('div',{style:{fontSize:12,color:AG3,letterSpacing:'-0.01em'}},l)))),
+        h('div',{style:{background:AG7,borderRadius:14,padding:'18px 20px',marginBottom:28,fontSize:13,color:AG2,lineHeight:1.8,letterSpacing:'-0.01em'}},
+          h('div',{style:{fontWeight:600,marginBottom:10,color:AG1,fontSize:13}},'5段階評価の基準'),
+          ['5 ・ ほぼすべての場面で一貫して見られる','4 ・ 多くの場面で継続的に見られる','3 ・ 一定の場面で安定して見られる','2 ・ 一部の場面で見られる','1 ・ ほとんど見られない'].map((t,i)=>h('div',{key:i},t))),
+        h('button',{className:'btn',onClick:onStart,style:{width:'100%',padding:'16px 22px',background:AC,color:'#fff',border:'none',borderRadius:980,fontSize:17,fontWeight:500,letterSpacing:'-0.01em',marginBottom:10}},'診断を開始する'))));}
+
+function QuizScreen({di,answers,setAnswer,onNext,onBack}){
+  const domain=DOMAINS[di],qs=QS[di],base=di*5,allDone=qs.every((_,qi)=>answers[base+qi]>0);
+  return h('div',{style:{minHeight:'100vh',background:BG,paddingBottom:48}},
+    h('div',{style:{background:'rgba(255,255,255,.92)',backdropFilter:'saturate(180%) blur(20px)',WebkitBackdropFilter:'saturate(180%) blur(20px)',borderBottom:'1px solid '+AG6,position:'sticky',top:0,zIndex:20}},
+      h('div',{style:{maxWidth:680,margin:'0 auto',padding:'14px 20px'}},
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}},
+          h('span',{style:{fontSize:12,letterSpacing:'0.02em',color:AG3,fontWeight:500}},'PSM Diagnostic'),
+          h('span',{style:{fontSize:13,color:AG3,letterSpacing:'-0.01em'}},h('strong',{style:{color:AG1,fontWeight:600}},di+1),' / 8 領域')),
+        h('div',{style:{height:4,background:AG6,borderRadius:2,overflow:'hidden'}},
+          h('div',{style:{height:'100%',width:`${(di/8)*100}%`,background:AC,borderRadius:2,transition:'width .5s cubic-bezier(.4,0,.2,1)'}})))),
+    h('div',{style:{maxWidth:680,margin:'0 auto',padding:'26px 16px'}},
+      h('div',{style:{display:'flex',alignItems:'center',gap:14,marginBottom:22}},
+        h('div',{style:{width:56,height:56,flexShrink:0,borderRadius:14,background:AC,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',color:'#fff'}},
+          h('span',{style:{fontSize:10,opacity:.7,letterSpacing:'0.05em',fontWeight:500}},'No.'),h('span',{style:{fontSize:22,fontWeight:600,lineHeight:1,letterSpacing:'-0.02em'}},String(di+1).padStart(2,'0'))),
+        h('div',null,h('div',{style:{fontSize:24,fontWeight:600,color:AG1,letterSpacing:'-0.02em'}},domain.label),h('div',{style:{fontSize:14,color:AG3,marginTop:2,letterSpacing:'-0.01em'}},domain.desc))),
+      qs.map((q,qi)=>{const idx=base+qi,cur=answers[idx];return h('div',{key:qi,style:{background:CARD,borderRadius:16,padding:'22px 24px',marginBottom:12,border:cur>0?'1px solid '+AC+'40':'1px solid '+AG6,transition:'all .25s cubic-bezier(.4,0,.2,1)'}},
+        h('div',{style:{display:'flex',gap:8,alignItems:'center',marginBottom:10}},
+          h('span',{style:{background:AG7,color:AG3,borderRadius:6,padding:'3px 10px',fontSize:12,fontWeight:500,letterSpacing:'-0.01em'}},'Q'+(idx+1)),
+          h('span',{style:{background:cur>0?AC+'15':AG7,color:cur>0?AC:AG4,borderRadius:6,padding:'3px 10px',fontSize:12,fontWeight:500,letterSpacing:'-0.01em'}},DIFF[qi]),
+          cur>0&&h('span',{style:{marginLeft:'auto',color:AC,fontSize:13,fontWeight:500}},'✓ '+cur)),
+        h('p',{style:{margin:'0 0 18px',color:AG1,fontSize:15,lineHeight:1.6,letterSpacing:'-0.01em'}},q),
+        h('div',{style:{display:'flex',gap:7}},
+          [
+            {s:1,label:'ほぼない'},
+            {s:2,label:'一部で'},
+            {s:3,label:'一定で'},
+            {s:4,label:'多くで'},
+            {s:5,label:'常に'},
+          ].map(({s,label})=>h('div',{key:s,style:{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:4}},
+            h('button',{className:'sb',onClick:()=>setAnswer(idx,s),style:{width:'100%',padding:'14px 4px',border:'1.5px solid '+(cur===s?AC:AG5),borderRadius:12,background:cur===s?AC:CARD,color:cur===s?'#fff':AG3,fontSize:18,fontWeight:500,letterSpacing:'-0.01em'}},s),
+            h('span',{style:{fontSize:10,color:cur===s?AC:AG4,fontWeight:cur===s?500:400,textAlign:'center',lineHeight:1.2,whiteSpace:'nowrap'}},label)))),
+        );}),
+      h('div',{style:{display:'flex',gap:12,marginTop:6}},
+        di>0&&h('button',{className:'btn',onClick:onBack,style:{padding:'14px 22px',border:'none',borderRadius:980,background:AG6,color:AG2,fontSize:15,fontWeight:500,letterSpacing:'-0.01em',whiteSpace:'nowrap'}},'戻る'),
+        h('button',{className:'btn',onClick:onNext,disabled:!allDone,style:{flex:1,padding:'14px 22px',border:'none',borderRadius:980,background:allDone?AC:AG6,color:'#fff',fontSize:15,fontWeight:500,letterSpacing:'-0.01em'}},di<7?'次の領域へ':'診断結果を見る')),
+      !allDone&&h('p',{style:{textAlign:'center',color:AG4,fontSize:13,marginTop:12,letterSpacing:'-0.01em'}},'すべての問いに回答すると次へ進めます')));
+}
+function ResultScreen({answers,onRestart}){
+  const ds=DOMAINS.map((_,i)=>calcD(answers,i));
+  const js=ds.map(s=>judge(s));
+  const total=answers.reduce((s,v)=>s+v,0);
+  const radarData=DOMAINS.map((d,i)=>({label:d.label,v:ds[i].total}));
+  const hc=js.filter(j=>j==='高').length,mc=js.filter(j=>j==='中').length,lc=js.filter(j=>j==='低').length;
+  const lv=total>=160?{l:'卓越',c:'#2e9e5b'}:total>=120?{l:'良好',c:AC}:total>=80?{l:'標準',c:'#c8873a'}:{l:'要強化',c:'#d14040'};
+
+  // ── PSM 12タイプ判定 ──
+  const t12r=calcType12(answers,ds);
+  const myType=getType12(t12r.el,t12r.ori);
+  const elC=EL_COL[myType.el], oriC=ORI_COL[myType.ori];
+
+  // Element/Orientationのバー用スケール（最大5.0として正規化）
+  const elMax=Math.max(t12r.mA,t12r.sA,t12r.hA,0.01);
+  const oriMax=Math.max(t12r.str,t12r.exe,t12r.ref,0.01);
+
+  // ── 相性タイプ（C+R上位3件、同タイプ除外） ──
+  const compatRanked=TYPE12
+    .filter(t=>t.id!==myType.id)
+    .map(t=>{const[C,R]=getCompat12(myType.id,t.id);return{t,C,R,score:C*1.5+R};})
+    .sort((a,b)=>b.score-a.score||b.C-a.C)
+    .slice(0,3);
+
+  const ScoreBadge=(label,v,color,bg)=>h('span',{style:{padding:'3px 11px',borderRadius:20,fontSize:11,fontWeight:700,background:bg,color,marginRight:6}},label+': '+v);
+
+  return h('div',{style:{minHeight:'100vh',background:BG,paddingBottom:60}},
+    // Hero
+    h('div',{style:{background:CARD,padding:'56px 24px 48px',textAlign:'center',borderBottom:'1px solid '+AG6}},
+      h('div',{style:{fontSize:12,letterSpacing:'0.04em',color:AG3,marginBottom:12,fontWeight:500,textTransform:'uppercase'}},'Diagnostic Result'),
+      h('h2',{style:{margin:'0 0 8px',fontSize:36,fontWeight:600,color:AG1,letterSpacing:'-0.03em'}},'診断結果レポート'),
+      h('p',{style:{margin:0,color:AG3,fontSize:16,letterSpacing:'-0.01em'}},'Proactive Self-Management 8領域評価')),
+
+    h('div',{style:{maxWidth:720,margin:'0 auto',padding:'32px 20px'}},
+
+      // ① 総合スコア
+      h(Card,{style:{},className:'print-no-break'},h('div',{style:{textAlign:'center'}},
+        h('div',{style:{fontSize:12,letterSpacing:'0.04em',color:AG3,marginBottom:10,fontWeight:500,textTransform:'uppercase'}},'Total Score'),
+        h('div',{style:{fontSize:84,fontWeight:600,lineHeight:1,color:AG1,letterSpacing:'-0.05em'}},total),
+        h('div',{style:{fontSize:15,color:AG4,margin:'6px 0 18px',letterSpacing:'-0.01em'}},'/ 200'),
+        h('div',{style:{display:'inline-block',background:lv.c+'18',color:lv.c,padding:'7px 20px',borderRadius:980,fontWeight:500,fontSize:14,letterSpacing:'-0.01em'}},lv.l),
+        h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:16,marginTop:28,paddingTop:24,borderTop:'1px solid '+AG6}},
+          [[hc,'高','強み（高）'],[mc,'中','発展途上（中）'],[lc,'低','課題（低）']].map(([v,j,l],i)=>
+            h('div',{key:i,style:{textAlign:'center'}},h('div',{style:{fontSize:32,fontWeight:600,color:JC[j],letterSpacing:'-0.02em'}},v),h('div',{style:{fontSize:12,color:AG3,marginTop:4,letterSpacing:'-0.01em'}},l)))))),
+
+      // ② レーダーチャート
+      h(Card,{title:'レーダーチャート'},h(RadarChart,{data:radarData})),
+
+      // ③ 8領域スコア
+      h(Card,{title:'8領域スコア詳細'},DOMAINS.map((d,i)=>{
+        const{total:t,q45}=ds[i],j=js[i],pct=(t/25)*100;
+        return h('div',{key:i,style:{marginBottom:i<7?18:0}},
+          h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:5,flexWrap:'wrap',gap:6}},
+            h('div',null,h('span',{style:{fontWeight:500,fontSize:15,color:AG1,letterSpacing:'-0.01em'}},d.label),h('span',{style:{fontSize:13,color:AG3,marginLeft:8,letterSpacing:'-0.01em'}},d.desc)),
+            h('div',{style:{display:'flex',alignItems:'center',gap:9}},
+              h('span',{style:{fontSize:16,fontWeight:500,color:AG1,letterSpacing:'-0.01em'}},t,h('span',{style:{color:AG4,fontSize:13}},'/25')),
+              h('span',{style:{padding:'4px 12px',borderRadius:980,fontSize:12,fontWeight:500,background:JBG[j],color:JC[j],letterSpacing:'-0.01em'}},j))),
+          h('div',{style:{height:6,background:AG6,borderRadius:3,overflow:'hidden'}},h('div',{style:{height:'100%',width:`${pct}%`,borderRadius:3,background:JC[j]}})),
+          h('div',{style:{display:'flex',justifyContent:'space-between',marginTop:3}},
+            h('span',{style:{fontSize:12,color:AG4,letterSpacing:'-0.01em'}},'発展・高度: '+q45+'/10'),
+            h('span',{style:{fontSize:12,color:JC[j],fontWeight:500,letterSpacing:'-0.01em'}},j==='高'?'強み領域':j==='中'?'発展途上':'課題領域')));
+      })),
+
+      // ④ PSM 12タイプ診断
+      h('div',{className:'print-break-before print-no-break',style:{background:CARD,border:'1px solid '+AG6,borderRadius:18,padding:'28px',marginBottom:16}},
+        h('div',{style:{fontSize:12,letterSpacing:'0.04em',color:AG3,fontWeight:500,marginBottom:16,textTransform:'uppercase'}},'PSM 12タイプ診断'),
+        // タイプ名バッジ
+        h('div',{style:{display:'flex',alignItems:'center',gap:12,marginBottom:16,flexWrap:'wrap'}},
+          h('div',{style:{background:AC,borderRadius:14,padding:'16px 24px',color:'#fff'}},
+            h('div',{style:{fontSize:24,fontWeight:600,letterSpacing:'-0.02em'}},myType.name),
+            h('div',{style:{fontSize:12,opacity:.85,marginTop:3,letterSpacing:'-0.01em'}},myType.en)),
+          h('div',{style:{display:'flex',flexDirection:'column',gap:6}},
+            h('span',{style:{padding:'5px 14px',borderRadius:980,fontSize:13,fontWeight:500,background:EL_COL[myType.el]+'15',color:EL_COL[myType.el],letterSpacing:'-0.01em'}},EL_LBL[myType.el]),
+            h('span',{style:{padding:'5px 14px',borderRadius:980,fontSize:13,fontWeight:500,background:ORI_COL[myType.ori]+'15',color:ORI_COL[myType.ori],letterSpacing:'-0.01em'}},ORI_LBL[myType.ori]))),
+        // 一言定義
+        h('div',{style:{fontSize:17,fontWeight:400,color:AG1,marginBottom:24,lineHeight:1.5,padding:'18px 20px',background:AG7,borderRadius:14,letterSpacing:'-0.01em',fontStyle:'italic'}},
+          '"',myType.one,'"'),
+        // 要素スコアバー
+        h('div',{style:{marginBottom:12}},
+          h('div',{style:{fontSize:13,fontWeight:600,color:AG1,marginBottom:10,letterSpacing:'-0.01em'}},'要素傾斜スコア（Q難度別）'),
+          [['Mind (発展・高度)',t12r.mA,EL_COL.mind],['Skill (応用)',t12r.sA,EL_COL.skill],['Habit (基本・実践)',t12r.hA,EL_COL.habit]].map(([lbl,val,col],i)=>
+            h('div',{key:i,style:{display:'flex',alignItems:'center',gap:8,marginBottom:5}},
+              h('div',{style:{width:100,fontSize:11,color:'#4a5568',flexShrink:0}},lbl),
+              h('div',{style:{flex:1,height:6,background:AG6,borderRadius:3,overflow:'hidden'}},
+                h('div',{style:{height:'100%',width:`${(val/5)*100}%`,background:col,borderRadius:3}})),
+              h('span',{style:{fontSize:11,fontWeight:700,color:col,width:28,textAlign:'right'}},val.toFixed(1))))),
+        // 志向スコアバー
+        h('div',null,
+          h('div',{style:{fontSize:13,fontWeight:600,color:AG1,marginBottom:10,letterSpacing:'-0.01em'}},'志向スコア（領域グループ別）'),
+          [['戦略志向',t12r.str,ORI_COL.strategy],['実行志向',t12r.exe,ORI_COL.execution],['内省志向',t12r.ref,ORI_COL.reflection]].map(([lbl,val,col],i)=>
+            h('div',{key:i,style:{display:'flex',alignItems:'center',gap:8,marginBottom:5}},
+              h('div',{style:{width:72,fontSize:11,color:'#4a5568',flexShrink:0}},lbl),
+              h('div',{style:{flex:1,height:6,background:AG6,borderRadius:3,overflow:'hidden'}},
+                h('div',{style:{height:'100%',width:`${(val/25)*100}%`,background:col,borderRadius:3}})),
+              h('span',{style:{fontSize:11,fontWeight:700,color:col,width:28,textAlign:'right'}},val.toFixed(1)))))),
+
+      // ⑤ あなたの持ち味
+      h('div',{className:'print-no-break',style:{background:CARD,border:'1px solid '+AG6,borderRadius:18,padding:'28px',marginBottom:16}},
+        h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:18}},
+          h('div',{style:{width:8,height:8,borderRadius:'50%',background:'#34C759'}}),
+          h('h3',{style:{margin:0,fontSize:19,fontWeight:600,color:AG1,letterSpacing:'-0.02em'}},'あなたの持ち味')),
+        // 強みドメイン
+        h('div',{style:{marginBottom:14}},
+          h('div',{style:{fontSize:13,fontWeight:600,color:'#34C759',marginBottom:10,letterSpacing:'-0.01em'}},'強みドメイン'),
+          h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',marginBottom:10}},
+            myType.strong.length>0
+              ? myType.strong.map((id,i)=>{const d=DOMAINS.find(x=>x.id===id);return h('span',{key:i,style:{padding:'6px 14px',borderRadius:980,fontSize:13,fontWeight:500,background:'#34C75915',color:'#248A3D',letterSpacing:'-0.01em'}},d.label+' ・ '+d.desc);})
+              : h('span',{style:{color:AG4,fontSize:13,letterSpacing:'-0.01em'}},'（均衡型のため特定の突出領域なし）'))),
+        // 典型的な強み行動
+        h('div',{style:{padding:'18px 20px',background:AG7,borderRadius:14,marginBottom:14}},
+          h('div',{style:{fontSize:12,fontWeight:500,color:AG3,marginBottom:8,letterSpacing:'-0.01em'}},myType.en+' ・ このタイプの発揮される行動特性'),
+          h('div',{style:{fontSize:14,color:AG1,lineHeight:1.65,letterSpacing:'-0.01em'}},myType.one+
+            (myType.strong.length>0
+              ? '。特に'+myType.strong.map(id=>DOMAINS.find(x=>x.id===id).desc).join('・')+'の面で高い行動力を発揮する。'
+              : '。思考・スキル・習慣がバランスよく備わり、どんな場面でも安定した力を発揮する。'))),
+        // 成長の方向
+        h('div',{style:{padding:'16px 20px',background:'#E8F8EC',borderRadius:14,display:'flex',gap:12,alignItems:'flex-start'}},
+          h('div',{style:{width:6,height:6,borderRadius:'50%',background:'#34C759',marginTop:7,flexShrink:0}}),
+          h('div',null,
+            h('div',{style:{fontSize:12,fontWeight:600,color:'#248A3D',marginBottom:4,letterSpacing:'-0.01em'}},'次の成長テーマ'),
+            h('div',{style:{fontSize:14,color:AG1,lineHeight:1.6,letterSpacing:'-0.01em'}},myType.grow)))),
+
+      // ⑥ 改善ポイント
+      h('div',{className:'print-no-break',style:{background:CARD,border:'1px solid '+AG6,borderRadius:18,padding:'28px',marginBottom:16}},
+        h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:18}},
+          h('div',{style:{width:8,height:8,borderRadius:'50%',background:'#FF9500'}}),
+          h('h3',{style:{margin:0,fontSize:19,fontWeight:600,color:AG1,letterSpacing:'-0.02em'}},'改善ポイント')),
+        // 課題ドメイン
+        h('div',{style:{marginBottom:14}},
+          h('div',{style:{fontSize:13,fontWeight:600,color:'#FF9500',marginBottom:10,letterSpacing:'-0.01em'}},'課題ドメイン'),
+          h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',marginBottom:10}},
+            myType.weak.length>0
+              ? myType.weak.map((id,i)=>{const d=DOMAINS.find(x=>x.id===id);return h('span',{key:i,style:{padding:'6px 14px',borderRadius:980,fontSize:13,fontWeight:500,background:'#FF950015',color:'#C2410C',letterSpacing:'-0.01em'}},d.label+' ・ '+d.desc);})
+              : h('span',{style:{color:AG4,fontSize:13,letterSpacing:'-0.01em'}},'（均衡型のため突出した課題領域なし。次の成長テーマに注力）'))),
+        // 陥りやすい罠
+        h('div',{style:{padding:'18px 20px',background:AG7,borderRadius:14}},
+          h('div',{style:{fontSize:12,fontWeight:600,color:'#C2410C',marginBottom:8,letterSpacing:'-0.01em'}},'陥りやすい罠'),
+          h('div',{style:{fontSize:14,color:AG1,lineHeight:1.65,letterSpacing:'-0.01em'}},myType.trap))),
+
+      // ⑦ 相性の良いタイプ
+      h('div',{className:'print-break-before',style:{background:CARD,border:'1px solid '+AG6,borderRadius:18,padding:'28px',marginBottom:16}},
+        h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:10}},
+          h('div',{style:{width:8,height:8,borderRadius:'50%',background:AC}}),
+          h('h3',{style:{margin:0,fontSize:19,fontWeight:600,color:AG1,letterSpacing:'-0.02em'}},'あなたと相性の良いタイプ')),
+        h('p',{style:{fontSize:14,color:AG3,marginBottom:22,lineHeight:1.6,letterSpacing:'-0.01em'}},
+          '12タイプの相性マトリクスに基づき、補完性（C）と共鳴性（R）が高い上位3タイプを表示しています。補完性が高いほど互いの弱みをカバーし合え、共鳴性が高いほど価値観・思考スタイルが通じやすくなります。'),
+        compatRanked.map((cr,i)=>
+          h('div',{key:i,style:{background:AG7,border:'1px solid '+AG6,borderRadius:14,padding:'18px 20px',marginBottom:i<compatRanked.length-1?12:0}},
+            h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:10,flexWrap:'wrap'}},
+              h('div',{style:{background:EL_COL[cr.t.el],borderRadius:10,padding:'7px 16px',color:'#fff',fontSize:15,fontWeight:500,letterSpacing:'-0.01em'}},cr.t.name),
+              h('span',{style:{fontSize:12,color:AG3,letterSpacing:'-0.01em'}},cr.t.en),
+              h('div',{style:{display:'flex',gap:6,marginLeft:'auto'}},
+                h('span',{style:{padding:'4px 11px',borderRadius:980,fontSize:12,fontWeight:500,background:AC+'15',color:AC,letterSpacing:'-0.01em'}},'補完性 C '+cr.C),
+                h('span',{style:{padding:'4px 11px',borderRadius:980,fontSize:12,fontWeight:500,background:'#34C75918',color:'#248A3D',letterSpacing:'-0.01em'}},'共鳴性 R '+cr.R))),
+            h('div',{style:{fontSize:13,color:AG3,marginBottom:10,letterSpacing:'-0.01em'}},
+              EL_LBL[cr.t.el]+' ・ '+ORI_LBL[cr.t.ori]+' ・ '+getCommGroup(cr.t.id)),
+            h('div',{style:{fontSize:14,color:AG1,lineHeight:1.6,padding:'14px 16px',background:CARD,borderRadius:10,letterSpacing:'-0.01em'}},
+              compatReason(myType,cr.t,cr.C,cr.R))))),
+
+      // ボタンエリア（トライアル版：PDFとやり直しのみ）
+      h('div',{className:'no-print',style:{display:'flex',gap:10,marginTop:8,flexWrap:'wrap'}},
+        h('button',{className:'btn',onClick:()=>window.print(),style:{flex:1,padding:'14px 22px',background:AC,color:'#fff',border:'none',borderRadius:980,fontSize:15,fontWeight:500,letterSpacing:'-0.01em',cursor:'pointer'}},'診断結果をPDFで保存'),
+        h('button',{className:'btn',onClick:onRestart,style:{flex:'0 0 auto',padding:'14px 22px',background:AG6,border:'none',color:AG2,borderRadius:980,fontSize:15,fontWeight:500,letterSpacing:'-0.01em',cursor:'pointer'}},'やり直す')),
+      // 印刷時フッター（画面には非表示）
+      h('div',{style:{display:'none'},className:'print-footer-spacer'})));}
+
+// ─── トライアル版：履歴・チーム機能は無効 ───────
+// （トライアル版のため localStorage は使用しません）
+
+function App(){
+  const [scr,setScr]=useState('start');
+  const [di,setDi]=useState(0);
+  const [ans,setAns]=useState(Array(40).fill(0));
+
+  const setAnswer=(idx,v)=>setAns(p=>{const a=[...p];a[idx]=v;return a;});
+  const goNext=()=>{if(di<7){setDi(d=>d+1);scrollTo(0,0);}else{setScr('result');scrollTo(0,0);}};
+  const goBack=()=>{if(di>0){setDi(d=>d-1);scrollTo(0,0);}};
+  const restart=()=>{setScr('start');setDi(0);setAns(Array(40).fill(0));scrollTo(0,0);};
+
+  if(scr==='start')return h(StartScreen,{onStart:()=>{setDi(0);setAns(Array(40).fill(0));setScr('quiz');scrollTo(0,0);}});
+  if(scr==='quiz')return h(QuizScreen,{di,answers:ans,setAnswer,onNext:goNext,onBack:goBack});
+  return h(ResultScreen,{answers:ans,onRestart:restart});
+}
+ReactDOM.createRoot(document.getElementById('root')).render(h(App,null));
+</script>
+</body>
+</html>
